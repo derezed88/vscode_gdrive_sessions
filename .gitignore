@@ -1,0 +1,16 @@
+# Secrets — never commit
+.env
+credentials.json
+token.json
+gen-lang-client-*.json
+*.service-account.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Claude Code session history (local only)
+.claude/
