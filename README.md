@@ -11,6 +11,7 @@ The server exposes five tools to Claude Code chat:
 | Tool | Requires agent-mcp? | Purpose |
 |------|---------------------|---------|
 | `claude_sessions_list` | No | List all local Claude Code sessions on this machine |
+| `claude_sessions_read` | For summary mode | Read session content into context — no Drive write |
 | `gdrive_list` | Preferred | List files in a Google Drive folder |
 | `gdrive_read` | For summary/extract modes | Read a Drive file (verbatim, summarized, or extracted) |
 | `gdrive_snippet_save` | Preferred | Save/append text content to a Drive file |
@@ -29,6 +30,8 @@ VSCode / Claude Code
 claude_vscode_sessions_mcp.py          ← this repo
       │
       ├─ claude_sessions_list ──────► ~/.claude/projects/ (local JSONL files, no network)
+      ├─ claude_sessions_read ──────► agent-mcp /vscode/sessions/read  (summary mode)
+      │                               └─ fallback: local JSONL read (full mode or agent-mcp offline)
       │
       ├─ gdrive_list   ─────────────┐
       ├─ gdrive_read                ├──► agent-mcp HTTP API  (primary path)
@@ -187,7 +190,7 @@ On startup the server:
 1. Loads `.env` from its own directory
 2. Reads `AGENT_MCP_URL`, `AGENT_MCP_TOKEN` from environment
 3. Imports `drive.py` lazily — only when agent-mcp is unreachable (so missing Google libs won't prevent startup)
-4. Registers five tools and waits for Claude Code to call them
+4. Registers six tools and waits for Claude Code to call them
 
 ---
 
@@ -220,7 +223,33 @@ Found 3 session(s):
   [2026-02-24] kaliLinuxNWScripts               ID: i9j0k1l2...  "scan local network with nmap"
 ```
 
-Session IDs (full UUID) are needed for `gdrive_sessions_export`. Run `claude_sessions_list` first to find them.
+Session IDs (full UUID or 8-char prefix) are used by `claude_sessions_read` and `gdrive_sessions_export`. Run `claude_sessions_list` first to find them.
+
+---
+
+### `claude_sessions_read`
+
+Read one or more local Claude Code sessions directly into the current chat context. **Nothing is written to Drive.**
+
+Use this to review, summarize, or reason over past sessions inline — without saving anywhere.
+
+**Parameters:**
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `session_ids` | array of strings | **Yes** | Session UUIDs or 8-char prefixes from `claude_sessions_list` |
+| `mode` | string | No | `full` (default/preferred) or `summary` |
+| `model` | string | No | agent-mcp model key for `mode='summary'`. Empty = agent-mcp default |
+
+**Modes:**
+- `full` — returns raw user+assistant text; Claude Code summarizes in-context (preferred, no extra API call)
+- `summary` — delegates to agent-mcp LLM for pre-summarization before returning; use only if the session is too large to fit in context
+
+**Example chat invocations:**
+- *"Read today's agent-mcp session and tell me what was accomplished"* → Claude calls `claude_sessions_read(session_ids=["a1b2c3d4"], mode="full")`
+- *"Summarize yesterday's vscode_gdrive_sessions work using nuc11Localtokens"* → Claude calls `claude_sessions_read(session_ids=["e5f6g7h8"], mode="summary", model="nuc11Localtokens")`
+
+**Fallback behavior (agent-mcp offline):** `mode="summary"` falls back to returning full text with a warning prepended.
 
 ---
 
@@ -373,6 +402,19 @@ All five tools are available in any VSCode chat. Claude decides which tool to ca
 "Show all my sessions"
 ```
 → `claude_sessions_list(date="2026-02-24")` — runs locally, no network
+
+#### Read a session into context (no Drive write)
+
+```
+"What did I work on in the agent-mcp project yesterday?"
+"Summarize today's vscode_gdrive_sessions session using nuc11Localtokens"
+"Read session a1b2c3d4 and tell me what decisions were made"
+```
+→ `claude_sessions_list(project="agent-mcp", date="2026-02-24")` then `claude_sessions_read(session_ids=["a1b2c3d4"], mode="full")`
+
+Content appears directly in this chat. No Drive write. For `mode="full"`, Claude reads the raw text in-context and summarizes itself (zero extra API calls). For `mode="summary"`, agent-mcp's LLM pre-summarizes (one extra API call, saves VSCode context tokens for very large sessions).
+
+---
 
 #### Export full session to Drive (no tokens consumed)
 

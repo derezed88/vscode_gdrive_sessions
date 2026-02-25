@@ -4,6 +4,7 @@ claude_vscode_sessions_mcp: MCP server bridging Claude Code VSCode chat to Googl
 
 Tools exposed to Claude Code:
   claude_sessions_list   - list local Claude Code sessions (always local, no agent-mcp needed)
+  claude_sessions_read   - read session content into context (full or agent-summarized, no Drive write)
   gdrive_list            - list Drive files
   gdrive_read            - read a Drive file (full | summary | extract)
   gdrive_snippet_save    - save verbatim content to a Drive topic file
@@ -219,7 +220,7 @@ async def list_tools() -> list[Tool]:
             description=(
                 "List all local Claude Code chat sessions across all VSCode projects. "
                 "Returns session IDs, titles (first user message), timestamps, and project paths. "
-                "Use this before gdrive_sessions_export to pick which sessions to export. "
+                "Use this before claude_sessions_read (to read/summarize) or gdrive_sessions_export (to save to Drive). "
                 "Runs locally — does not require agent-mcp."
             ),
             inputSchema={
@@ -235,6 +236,40 @@ async def list_tools() -> list[Tool]:
                     }
                 },
                 "required": []
+            }
+        ),
+        Tool(
+            name="claude_sessions_read",
+            description=(
+                "Read one or more local Claude Code sessions into the current chat context. "
+                "No Drive write — content is returned directly here. "
+                "Use this to review, summarize, or reason over past sessions without saving anywhere. "
+                "mode='full' (default/preferred): returns verbatim user+assistant text; you summarize in-context. "
+                "mode='summary': delegates summarization to agent-mcp LLM before returning — use only if the "
+                "session is too large to fit in context. "
+                "model: agent-mcp model key for mode='summary' (e.g. 'nuc11Localtokens', 'gemini25fl'). "
+                "Empty = agent-mcp default model. "
+                "Workflow: call claude_sessions_list first to find session IDs, then call this tool."
+            ),
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "session_ids": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "List of session UUIDs or 8-char prefixes (from claude_sessions_list)."
+                    },
+                    "mode": {
+                        "type": "string",
+                        "enum": ["full", "summary"],
+                        "description": "full (default): verbatim text, you summarize. summary: agent-mcp pre-summarizes (extra API call)."
+                    },
+                    "model": {
+                        "type": "string",
+                        "description": "agent-mcp model key for mode='summary'. Empty = agent-mcp default."
+                    }
+                },
+                "required": ["session_ids"]
             }
         ),
         Tool(
@@ -391,6 +426,89 @@ async def _dispatch(name: str, args: dict) -> str:
             _local_sessions_list, date_filter, project_filter
         )
         return _format_sessions(sessions)
+
+    # -----------------------------------------------------------------------
+    # claude_sessions_read — returns content directly, no Drive write
+    # -----------------------------------------------------------------------
+    elif name == "claude_sessions_read":
+        import pathlib
+        session_ids = args.get("session_ids", [])
+        if not session_ids:
+            return "ERROR: session_ids is required"
+        mode  = args.get("mode", "full")
+        model = args.get("model", "")
+
+        all_sessions = await asyncio.to_thread(_local_sessions_list, "", "")
+        session_map  = {s["session_id"]: s for s in all_sessions}
+
+        # Support 8-char prefix matching
+        def _resolve_id(sid: str) -> Optional[str]:
+            if sid in session_map:
+                return sid
+            matches = [k for k in session_map if k.startswith(sid)]
+            return matches[0] if len(matches) == 1 else None
+
+        parts   = []
+        missing = []
+        for sid in session_ids:
+            full_id = _resolve_id(sid)
+            if not full_id:
+                missing.append(sid)
+                continue
+            s = session_map[full_id]
+            header = (
+                f"{'='*70}\n"
+                f"Session: {s['title'][:80]}\n"
+                f"Project: {s['project_path']}\n"
+                f"Date:    {s.get('first_timestamp', 'unknown')}\n"
+                f"ID:      {s['session_id']}\n"
+                f"{'='*70}\n"
+            )
+            jsonl_path = None
+            for p in pathlib.Path(CLAUDE_PROJECTS_DIR).rglob(f"{full_id}.jsonl"):
+                jsonl_path = str(p)
+                break
+
+            if mode == "summary":
+                try:
+                    params = {"session_ids": full_id, "mode": "summary"}
+                    if model:
+                        params["model"] = model
+                    data = await _api_get("/vscode/sessions/read", params)
+                    body_text = data.get("content", "")
+                    # Strip agent-mcp's own header block if present
+                    if body_text.startswith("="):
+                        stripped, in_hdr, eq_count = [], True, 0
+                        for line in body_text.split("\n"):
+                            if in_hdr and line.startswith("="):
+                                eq_count += 1
+                                if eq_count >= 2:
+                                    in_hdr = False
+                                continue
+                            if not in_hdr:
+                                stripped.append(line)
+                        body_text = "\n".join(stripped)
+                except Exception as e:
+                    body_text = (
+                        f"[agent-mcp {'unavailable' if _agent_mcp_unavailable(e) else f'error: {e}'}"
+                        f" — returning full text]\n\n"
+                        + (_read_session_text_local(jsonl_path) if jsonl_path else "(file not found)")
+                    )
+            else:
+                body_text = (
+                    _read_session_text_local(jsonl_path) if jsonl_path
+                    else "(session file not found)"
+                )
+
+            parts.append(header + body_text)
+
+        if not parts:
+            return "ERROR: No matching sessions found."
+
+        out = "\n\n".join(parts)
+        if missing:
+            out += f"\n\n[NOTE: {len(missing)} session ID(s) not found: {', '.join(missing)}]"
+        return out
 
     # -----------------------------------------------------------------------
     # gdrive_list
