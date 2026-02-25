@@ -35,13 +35,15 @@ The server exposes five tools to Claude Code chat:
 | Tool | Requires agent-mcp? | Purpose |
 |------|---------------------|---------|
 | `claude_sessions_list` | No | List all local Claude Code sessions on this machine |
-| `claude_sessions_read` | For summary mode | Read session content into context — no Drive write |
+| `claude_sessions_read` | Only for `summarizer=agent` | Read session content into context — no Drive write |
 | `gdrive_list` | Preferred | List files in a Google Drive folder |
-| `gdrive_read` | For summary/extract modes | Read a Drive file (verbatim, summarized, or extracted) |
+| `gdrive_read` | Only for `summary`/`extract` modes | Read a Drive file (verbatim, summarized, or extracted) |
 | `gdrive_snippet_save` | Preferred | Save/append text content to a Drive file |
-| `gdrive_sessions_export` | For summary mode | Export selected sessions to Drive |
+| `gdrive_sessions_export` | Only for `summarizer=agent` | Export selected sessions to Drive |
 
-"Preferred" means: the tool works without agent-mcp via a direct Google Drive API fallback, but `summary` and `extract` modes require agent-mcp's LLM dispatch.
+**"Preferred"**: the tool works without agent-mcp via a direct Google Drive API fallback — no functionality is lost.
+
+**"Only for ..."**: all other modes work without agent-mcp. The listed modes require agent-mcp because they delegate the LLM call to it. Exception: `gdrive_sessions_export` with `mode="summary", summarizer="claude"` works without agent-mcp — Claude summarizes in-context before writing to Drive, at the cost of VSCode tokens proportional to session size.
 
 ---
 
