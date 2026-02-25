@@ -10,7 +10,7 @@ The server exposes five tools to Claude Code chat:
 
 | Tool | Requires agent-mcp? | Purpose |
 |------|---------------------|---------|
-| `gdrive_sessions_list` | No | List all local Claude Code sessions on this machine |
+| `claude_sessions_list` | No | List all local Claude Code sessions on this machine |
 | `gdrive_list` | Preferred | List files in a Google Drive folder |
 | `gdrive_read` | For summary/extract modes | Read a Drive file (verbatim, summarized, or extracted) |
 | `gdrive_snippet_save` | Preferred | Save/append text content to a Drive file |
@@ -28,7 +28,7 @@ VSCode / Claude Code
       ▼
 claude_vscode_sessions_mcp.py          ← this repo
       │
-      ├─ gdrive_sessions_list ──────► ~/.claude/projects/ (local JSONL files, no network)
+      ├─ claude_sessions_list ──────► ~/.claude/projects/ (local JSONL files, no network)
       │
       ├─ gdrive_list   ─────────────┐
       ├─ gdrive_read                ├──► agent-mcp HTTP API  (primary path)
@@ -169,7 +169,7 @@ DRIVE_TOKEN_FILE=/path/to/token.json   # auto-created after first OAuth login
 
 ### 4. Restart VSCode
 
-After restarting, Claude Code automatically launches the MCP server as a child process via stdio. You can verify by asking Claude: *"Run gdrive_sessions_list"* — it should return a list of your local sessions.
+After restarting, Claude Code automatically launches the MCP server as a child process via stdio. You can verify by asking Claude: *"Run claude_sessions_list"* — it should return a list of your local sessions.
 
 ---
 
@@ -193,7 +193,7 @@ On startup the server:
 
 ## Tool Reference
 
-### `gdrive_sessions_list`
+### `claude_sessions_list`
 
 List all Claude Code chat sessions stored locally on this machine.
 
@@ -207,9 +207,9 @@ List all Claude Code chat sessions stored locally on this machine.
 | `project` | string | No | Filter by partial project path, e.g. `"agent-mcp"` |
 
 **Example chat invocations:**
-- *"List my sessions from today"* → Claude calls `gdrive_sessions_list(date="2026-02-24")`
-- *"Show sessions for the agent-mcp project"* → Claude calls `gdrive_sessions_list(project="agent-mcp")`
-- *"List all my Claude Code sessions"* → Claude calls `gdrive_sessions_list()`
+- *"List my sessions from today"* → Claude calls `claude_sessions_list(date="2026-02-24")`
+- *"Show sessions for the agent-mcp project"* → Claude calls `claude_sessions_list(project="agent-mcp")`
+- *"List all my Claude Code sessions"* → Claude calls `claude_sessions_list()`
 
 **Output format:**
 ```
@@ -220,7 +220,7 @@ Found 3 session(s):
   [2026-02-24] kaliLinuxNWScripts               ID: i9j0k1l2...  "scan local network with nmap"
 ```
 
-Session IDs (full UUID) are needed for `gdrive_sessions_export`.
+Session IDs (full UUID) are needed for `gdrive_sessions_export`. Run `claude_sessions_list` first to find them.
 
 ---
 
@@ -312,7 +312,7 @@ Export one or more local Claude Code sessions to a single file in Google Drive.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `session_ids` | array of strings | **Yes** | Full session UUIDs from `gdrive_sessions_list` |
+| `session_ids` | array of strings | **Yes** | Full session UUIDs from `claude_sessions_list` |
 | `mode` | string | No | `full` (default) or `summary` |
 | `summarizer` | string | No | `claude` (default) or `agent` — who performs summarization |
 | `model` | string | No | agent-mcp model key when `summarizer=agent`, e.g. `nuc11Local` |
@@ -363,7 +363,7 @@ Session: pre-release steps
 
 ### Claude Code in VSCode Workflows
 
-All five tools are available in any VSCode chat. Claude decides which tool to call based on natural language. The session ID shown by `gdrive_sessions_list` is the full UUID needed by `gdrive_sessions_export`.
+All five tools are available in any VSCode chat. Claude decides which tool to call based on natural language. The session ID shown by `claude_sessions_list` is the full UUID needed by `gdrive_sessions_export`.
 
 #### List sessions
 
@@ -372,7 +372,7 @@ All five tools are available in any VSCode chat. Claude decides which tool to ca
 "List sessions for the agent-mcp project"
 "Show all my sessions"
 ```
-→ `gdrive_sessions_list(date="2026-02-24")` — runs locally, no network
+→ `claude_sessions_list(date="2026-02-24")` — runs locally, no network
 
 #### Export full session to Drive (no tokens consumed)
 
@@ -447,7 +447,7 @@ When the `vscode` toolset is bound to a model in `llm-tools.json` and `llm-model
    }
    ```
 
-3. The `plugin_client_vscode_sessions` plugin must be enabled in `plugins-enabled.json`.
+3. The `plugin_claude_vscode_sessions` plugin must be enabled in `plugins-enabled.json`.
 
 #### How to prompt it
 
@@ -651,7 +651,7 @@ A typical 60-message session is ~40,000 tokens raw. After summarization it is ~2
 - Restart VSCode after running the setup script
 - Check that `python3` is in your PATH as seen by VSCode's shell
 
-**`gdrive_sessions_list` returns no sessions:**
+**`claude_sessions_list` returns no sessions:**
 - Confirm `~/.claude/projects/` exists and contains `.jsonl` files
 - Sessions with zero messages (orphaned snapshots) are filtered out automatically
 
@@ -671,4 +671,4 @@ A typical 60-message session is ~40,000 tokens raw. After summarization it is ~2
 - `AGENT_MCP_TOKEN` in `.env` must match `API_KEY` in agent-mcp's `.env`
 
 **`!vscode` not recognized in Slack/shell:**
-- Restart agent-mcp so it picks up the updated `routes.py` and `plugin_client_vscode_sessions.py`
+- Restart agent-mcp so it picks up the updated `routes.py` and `plugin_claude_vscode_sessions.py`

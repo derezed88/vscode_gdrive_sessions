@@ -3,7 +3,7 @@
 claude_vscode_sessions_mcp: MCP server bridging Claude Code VSCode chat to Google Drive.
 
 Tools exposed to Claude Code:
-  gdrive_sessions_list   - list local Claude Code sessions (always local, no agent-mcp needed)
+  claude_sessions_list   - list local Claude Code sessions (always local, no agent-mcp needed)
   gdrive_list            - list Drive files
   gdrive_read            - read a Drive file (full | summary | extract)
   gdrive_snippet_save    - save verbatim content to a Drive topic file
@@ -215,7 +215,7 @@ def _read_session_text_local(jsonl_path: str) -> str:
 async def list_tools() -> list[Tool]:
     return [
         Tool(
-            name="gdrive_sessions_list",
+            name="claude_sessions_list",
             description=(
                 "List all local Claude Code chat sessions across all VSCode projects. "
                 "Returns session IDs, titles (first user message), timestamps, and project paths. "
@@ -314,7 +314,7 @@ async def list_tools() -> list[Tool]:
             name="gdrive_sessions_export",
             description=(
                 "Export one or more Claude Code chat sessions to a single file in Google Drive. "
-                "Pass session_ids from gdrive_sessions_list. "
+                "Pass session_ids from claude_sessions_list. "
                 "mode='full' preserves all user and assistant turns verbatim. "
                 "mode='summary' generates LLM summaries per session preserving technical details. "
                 "summarizer='claude' — Claude Code in VSCode summarizes in-context (uses VSCode tokens). "
@@ -328,7 +328,7 @@ async def list_tools() -> list[Tool]:
                     "session_ids": {
                         "type": "array",
                         "items": {"type": "string"},
-                        "description": "List of session UUIDs to export (from gdrive_sessions_list)"
+                        "description": "List of session UUIDs to export (from claude_sessions_list)"
                     },
                     "filename": {
                         "type": "string",
@@ -382,9 +382,9 @@ async def call_tool(name: str, arguments: dict) -> list[TextContent]:
 
 async def _dispatch(name: str, args: dict) -> str:
     # -----------------------------------------------------------------------
-    # gdrive_sessions_list — always local
+    # claude_sessions_list — always local
     # -----------------------------------------------------------------------
-    if name == "gdrive_sessions_list":
+    if name == "claude_sessions_list":
         date_filter    = args.get("date", "")
         project_filter = args.get("project", "")
         sessions = await asyncio.to_thread(
