@@ -25,7 +25,7 @@ fi
 
 # 3. Register MCP server in ~/.claude.json
 CLAUDE_JSON="$HOME/.claude.json"
-SERVER_NAME="gdrive"
+SERVER_NAME="claude-sessions"
 SERVER_ENTRY=$(cat <<EOF
 {
   "type": "stdio",
@@ -42,7 +42,7 @@ if [ ! -f "$CLAUDE_JSON" ]; then
 fi
 
 # Use python3 to safely merge into existing JSON
-python3 - "$CLAUDE_JSON" "$SERVER_NAME" "$MCP_DIR/vscode-gdrive-sessions-mcp.py" <<'PYEOF'
+python3 - "$CLAUDE_JSON" "$SERVER_NAME" "$MCP_DIR/claude_vscode_sessions_mcp.py" <<'PYEOF'
 import sys, json
 
 claude_json_path = sys.argv[1]
@@ -70,4 +70,4 @@ echo ""
 echo "Next steps:"
 echo "  1. Edit .env  — set AGENT_MCP_URL and AGENT_MCP_TOKEN"
 echo "  2. Restart VSCode / Claude Code"
-echo "  3. In any VSCode chat, ask Claude to run 'gdrive_sessions_list' to verify"
+echo "  3. In any VSCode chat, ask Claude to run 'claude_sessions_list' to verify"

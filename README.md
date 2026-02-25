@@ -4,6 +4,30 @@ An MCP (Model Context Protocol) server that bridges **Claude Code in VSCode** wi
 
 ---
 
+## Who This Is For and What It's Worth
+
+This is an honest assessment of the value this MCP provides, so you can decide whether it's worth setting up for your situation.
+
+### What you could do without it
+
+Claude Code already has filesystem access. A determined user could ask Claude to parse `~/.claude/projects/` directly, write an inline JSONL extractor, and read session files. For Drive access, there is no equivalent — Claude Code has no built-in Drive integration at all.
+
+### What this MCP actually gives you
+
+**At minimum: convenience.** Session listing and reading are purpose-built tools with consistent, clean output — no scaffolding required each time. The JSONL format is noisy (tool calls, system entries, metadata), and this MCP pre-filters it to just the human conversation. That scaffolding cost adds up across daily use.
+
+**The real value: Google Drive as offline memory.** The integration work for Drive auth, upload, download, and append is done. You can export a session — or a summary of one — to Drive in a single natural-language request. That Drive file then becomes accessible to anything else: a phone, a voice assistant, another LLM, a different machine. A concrete example: export a summary of a deep coding thread before leaving work, then have a voice-capable LLM on your phone read it back during the commute. You arrive at the next session already re-oriented.
+
+**Token economics matter at scale.** A typical coding session runs 40,000–100,000 tokens of raw JSONL. Every time you read that back into Claude's context, you pay those tokens again. Exporting a summary once — using a local model like Ollama at zero cost — and reading the 2,000-token summary later instead saves the difference on every subsequent recall. Across multiple ongoing threads, this compounds.
+
+**Multi-thread and multi-project work.** Technical work — whether coding or operational IT — rarely stays in one thread. This MCP gives Claude a practical way to recall what was decided in a previous session, what was left unfinished, or what approach was taken for a problem that looks similar to the current one. Without persistent memory across sessions, you re-explain context each time. With exported summaries readable from Drive, Claude can be briefed in seconds.
+
+### What it does not do
+
+It does not give Claude Code persistent memory on its own — session export and re-import is a deliberate manual step, not automatic. It does not replace a proper knowledge base or RAG system for large corpora. The session listing and reading tools are convenience wrappers; a power user who knows the file paths and JSONL structure could replicate them through prompting.
+
+---
+
 ## What It Does
 
 The server exposes five tools to Claude Code chat:
@@ -46,7 +70,7 @@ claude_vscode_sessions_mcp.py          ← this repo
                                           (agent-mcp used only for summary mode LLM call)
 ```
 
-**agent-mcp** (separate repo) is an HTTP API server. When reachable, it handles Drive operations and LLM summarization. When unreachable, `drive.py` in this repo provides a direct fallback for all operations except LLM-based `summary` and `extract` modes.
+**agent-mcp** (separate repo) is a self-hosted HTTP API server that acts as a multi-model LLM gateway and tool dispatcher. It manages a registry of language models (cloud APIs, local GGUF models via llama.cpp, Ollama, etc.), routes chat messages through them, and exposes a set of HTTP endpoints and LangChain tools for operations like Drive I/O, database queries, and VSCode session access. When reachable, it handles Drive operations and LLM summarization for this MCP server. When unreachable, `drive.py` in this repo provides a direct fallback for all operations except LLM-based `summary` and `extract` modes.
 
 ---
 
@@ -90,14 +114,54 @@ google-api-python-client>=2.0.0 # Google Drive API client
 
 ### Google Drive API Credentials
 
-Required for direct Drive access (fallback mode, and always for `gdrive_sessions_export`):
+Drive credentials are required for two things: all `gdrive_*` operations when agent-mcp is not running, and always for `gdrive_sessions_export` (which writes directly regardless of agent-mcp status).
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
-2. Create an **OAuth 2.0 Client ID** (application type: Desktop app)
-3. Download `credentials.json`
-4. Place it on your machine and note the path; set `DRIVE_CREDS_FILE` in `.env`
+#### What `drive.py` supports today
 
-The first time a Drive operation runs, a browser window opens for OAuth consent. A `token.json` file is written automatically and reused on subsequent runs.
+`drive.py` implements **OAuth 2.0 Desktop (Installed App) flow** only — the standard flow for a script running on your own machine, accessing your own Google Drive. This is what most personal/developer setups need.
+
+**Step 1 — Enable the Drive API**
+
+Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Library → search "Google Drive API" → Enable.
+
+**Step 2 — Create OAuth credentials**
+
+APIs & Services → Credentials → Create Credentials → **OAuth 2.0 Client ID** → Application type: **Desktop app** → name it anything → Create.
+
+Download the JSON file. Rename it `credentials.json` (or keep the generated name and set `DRIVE_CREDS_FILE` in `.env`).
+
+**Step 3 — Set your Drive folder ID**
+
+In Google Drive, open the folder you want to use. Copy the folder ID from the URL:
+```
+https://drive.google.com/drive/folders/19uJiJIrgy7ZW1gF3INfBIOBa2FSVt6PL
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+                                        this is your FOLDER_ID
+```
+
+Set it in `.env`:
+```bash
+FOLDER_ID=19uJiJIrgy7ZW1gF3INfBIOBa2FSVt6PL
+DRIVE_CREDS_FILE=/path/to/credentials.json
+```
+
+**Step 4 — First run: browser consent**
+
+The first time a Drive operation runs, a browser window opens asking you to sign into your Google account and grant access. After approval, a `token.json` is written next to `credentials.json` and reused silently on all subsequent runs. Token refresh is automatic.
+
+---
+
+#### Other credential methods — what would need to change
+
+Google Drive supports several other authentication approaches. None are implemented in `drive.py` today, but here is what a third party would need to do to add each:
+
+**Service Account** — best for automation with no user present. Instead of OAuth consent, you create a service account in Cloud Console, download its JSON key, and share your Drive folder with the service account's email address (`name@project.iam.gserviceaccount.com`). To integrate: replace `InstalledAppFlow` / `Credentials.from_authorized_user_file` in `_get_drive_service()` with `google.oauth2.service_account.Credentials.from_service_account_file(key_path, scopes=DRIVE_SCOPES)`. Add `DRIVE_SERVICE_ACCOUNT_FILE` to `.env`. No `token.json` is needed — service accounts use short-lived tokens minted on-the-fly from the key.
+
+**Application Default Credentials (ADC)** — best for code that runs in multiple environments (local, CI, Google Cloud). Call `google.auth.default(scopes=DRIVE_SCOPES)` instead of the current flow; the library finds credentials automatically from `GOOGLE_APPLICATION_CREDENTIALS`, `gcloud auth application-default login`, or the compute metadata server. No file path configuration needed — just set the env var to point at whichever credential file applies to the environment.
+
+**Workload Identity Federation** — best for CI/CD pipelines (GitHub Actions, GitLab, AWS) that should never hold a long-lived key file. A short-lived token from the CI provider (e.g. GitHub's OIDC token) is exchanged for a Google access token via Google's Security Token Service. To integrate: generate a WIF credential configuration file from Cloud Console, set `GOOGLE_APPLICATION_CREDENTIALS` to it, and use ADC as above — no other code change required since the Google libraries handle the exchange transparently.
+
+**`gcloud auth application-default login`** — easiest for local development if you already have the Google Cloud SDK installed. Run `gcloud auth application-default login` once; the resulting credentials in `~/.config/gcloud/application_default_credentials.json` are picked up automatically by ADC. No `credentials.json` or `token.json` needed. Note: Google discourages this for production use since the credentials are tied to your personal account.
 
 ### agent-mcp (Optional but Recommended)
 
@@ -142,7 +206,7 @@ The script uses Python to safely merge the following entry into `~/.claude.json`
 
 ```json
 "mcpServers": {
-  "gdrive": {
+  "claude-sessions": {
     "type": "stdio",
     "command": "python3",
     "args": ["/path/to/vscode_gdrive_sessions/claude_vscode_sessions_mcp.py"]
@@ -178,7 +242,7 @@ After restarting, Claude Code automatically launches the MCP server as a child p
 
 ## How the Server Starts
 
-Claude Code reads `~/.claude.json` on startup. When it finds the `"gdrive"` entry under `"mcpServers"`, it launches:
+Claude Code reads `~/.claude.json` on startup. When it finds the `"claude-sessions"` entry under `"mcpServers"`, it launches:
 
 ```bash
 python3 /path/to/vscode_gdrive_sessions/claude_vscode_sessions_mcp.py
@@ -218,9 +282,9 @@ List all Claude Code chat sessions stored locally on this machine.
 ```
 Found 3 session(s):
 
-  [2026-02-20] agent-mcp                        ID: a1b2c3d4...  "debug the plugin loader crash"
-  [2026-02-22] vscode_gdrive_sessions           ID: e5f6g7h8...  "pre-release steps"
-  [2026-02-24] kaliLinuxNWScripts               ID: i9j0k1l2...  "scan local network with nmap"
+  [2026-02-20] agent-mcp                        ID: a1b2c3d4...   142kB  "debug the plugin loader crash"
+  [2026-02-22] vscode_gdrive_sessions           ID: e5f6g7h8...    38kB  "pre-release steps"
+  [2026-02-24] kaliLinuxNWScripts               ID: i9j0k1l2...    12kB  "scan local network with nmap"
 ```
 
 Session IDs (full UUID or 8-char prefix) are used by `claude_sessions_read` and `gdrive_sessions_export`. Run `claude_sessions_list` first to find them.
@@ -689,7 +753,7 @@ A typical 60-message session is ~40,000 tokens raw. After summarization it is ~2
 ## Troubleshooting
 
 **MCP server doesn't appear in Claude Code:**
-- Verify `~/.claude.json` contains the `"gdrive"` entry under `"mcpServers"`
+- Verify `~/.claude.json` contains the `"claude-sessions"` entry under `"mcpServers"`
 - Restart VSCode after running the setup script
 - Check that `python3` is in your PATH as seen by VSCode's shell
 
@@ -714,3 +778,93 @@ A typical 60-message session is ~40,000 tokens raw. After summarization it is ~2
 
 **`!vscode` not recognized in Slack/shell:**
 - Restart agent-mcp so it picks up the updated `routes.py` and `plugin_claude_vscode_sessions.py`
+
+---
+
+## Summarizing Sessions Without agent-mcp
+
+Without agent-mcp, `mode="summary"` is unavailable. The tools that still work fully are `claude_sessions_list`, `claude_sessions_read` (full mode), and all Drive operations via the OAuth2 fallback. You can still get summaries — you just bring your own model.
+
+### Option 1 — Manual: copy-paste into any LLM
+
+The session files are plain JSONL at `~/.claude/projects/<project-dir>/<session-uuid>.jsonl`. To read one as human-readable text:
+
+```bash
+# Find the file
+ls ~/.claude/projects/
+
+# Extract just the user+assistant turns
+python3 - <<'EOF'
+import json, sys
+for line in open(sys.argv[1]):
+    try:
+        obj = json.loads(line)
+    except Exception:
+        continue
+    if obj.get("type") not in ("user", "assistant"):
+        continue
+    role = obj.get("message", {}).get("role", "").upper()
+    content = obj.get("message", {}).get("content", [])
+    text = content if isinstance(content, str) else \
+           " ".join(c["text"] for c in content if isinstance(c, dict) and c.get("type") == "text")
+    if text.strip():
+        print(f"\n[{role}]\n{text.strip()}")
+EOF ~/.claude/projects/<project-dir>/<session-uuid>.jsonl
+```
+
+Paste the output into ChatGPT, Claude.ai, Gemini, or any web UI with a prompt like:
+
+> Summarize this Claude Code session. Preserve specific commands, config values, and technical decisions verbatim. Organize by topic.
+
+### Option 2 — Programmatic: pipe to a local Ollama model
+
+If you have [Ollama](https://ollama.com/) running locally, you can pipe the extracted session text straight to it:
+
+```bash
+# Install and start Ollama (one-time)
+curl -fsSL https://ollama.com/install.sh | sh
+ollama pull qwen2.5:7b
+```
+
+Then summarize a session in one command:
+
+```bash
+SESSION=~/.claude/projects/<project-dir>/<session-uuid>.jsonl
+
+python3 - <<'EOF' | ollama run qwen2.5:7b "Summarize this Claude Code session. Preserve commands and technical details verbatim. Organize by topic.\n$(cat)"
+import json, sys
+for line in open(sys.argv[1]):
+    try: obj = json.loads(line)
+    except: continue
+    if obj.get("type") not in ("user", "assistant"): continue
+    role = obj.get("message", {}).get("role", "").upper()
+    content = obj.get("message", {}).get("content", [])
+    text = content if isinstance(content, str) else \
+           " ".join(c["text"] for c in content if isinstance(c, dict) and c.get("type") == "text")
+    if text.strip(): print(f"\n[{role}]\n{text.strip()}")
+EOF "$SESSION"
+```
+
+Or more cleanly, using Ollama's REST API directly:
+
+```bash
+SESSION_TEXT=$(python3 extract_session.py ~/.claude/projects/<project-dir>/<session-uuid>.jsonl)
+
+curl http://localhost:11434/api/generate -s -d @- <<EOF | python3 -c "import sys,json; [print(json.loads(l).get('response',''),end='') for l in sys.stdin]"
+{
+  "model": "qwen2.5:7b",
+  "prompt": "Summarize this Claude Code session. Preserve commands and technical details verbatim.\n\n$SESSION_TEXT",
+  "stream": true
+}
+EOF
+```
+
+Save `extract_session.py` with the extraction logic from Option 1 for reuse.
+
+### Finding session files
+
+`claude_sessions_list` (via this MCP server in VSCode) is the easiest way to find the right session UUID and project directory. Alternatively, sort by modification time from the shell:
+
+```bash
+ls -lt ~/.claude/projects/**/*.jsonl | head -10
+```

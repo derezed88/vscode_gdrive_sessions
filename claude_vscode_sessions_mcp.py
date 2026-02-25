@@ -152,6 +152,11 @@ def _local_sessions_list(date_filter: str = "", project_filter: str = "") -> lis
         if project_filter and project_filter.lower() not in (cwd or project_dir).lower():
             continue
 
+        try:
+            file_bytes = os.path.getsize(jsonl_path)
+        except Exception:
+            file_bytes = 0
+
         sessions.append({
             "session_id": session_id,
             "project_path": cwd or project_dir,
@@ -159,6 +164,7 @@ def _local_sessions_list(date_filter: str = "", project_filter: str = "") -> lis
             "first_timestamp": first_ts or "",
             "last_timestamp": last_ts or "",
             "message_count": message_count,
+            "file_bytes": file_bytes,
         })
 
     sessions.sort(key=lambda s: s["first_timestamp"])
@@ -171,10 +177,13 @@ def _format_sessions(sessions: list) -> str:
         return "No sessions found."
     lines = [f"Found {len(sessions)} session(s):\n"]
     for s in sessions:
+        kb = s.get("file_bytes", 0) / 1024
+        size_str = f"{kb:.0f}kB"
         lines.append(
             f"  [{s['first_timestamp'][:10] if s['first_timestamp'] else '?'}] "
             f"{s['project_path'].split('/')[-1]:<28} "
             f"ID: {s['session_id']}  "
+            f"{size_str:>7}  "
             f"\"{s['title'][:50]}\""
         )
     return "\n".join(lines)
