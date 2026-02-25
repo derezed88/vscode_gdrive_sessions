@@ -480,31 +480,78 @@ Content appears directly in this chat. No Drive write. For `mode="full"`, Claude
 
 ---
 
-#### Export full session to Drive (no tokens consumed)
+#### Export sessions to Drive
+
+First, get the session ID(s) you need:
 
 ```
-"Export session ee159cbc-64e8-44d8-9451-13d91886f1f9 to Drive"
+"List my sessions from today"
+```
+→ `claude_sessions_list(date="2026-02-25")` returns IDs like `ee159cbc-64e8-44d8-9451-13d91886f1f9`
+
+> **Tip: session titles** — The session title shown in listings is taken from the **first user message** in the chat. Starting a new chat with a clear goal ("Implement OAuth2 flow for FastAPI") makes it easy to find the right session later. A generic opener like "hello" or "help" will make sessions harder to identify.
+
+---
+
+**Push the current session to Drive — full log, no tokens**
+
+```
+"Export this session to Drive"
 "Save today's vscode_gdrive_sessions session to Drive as a full log"
+"Push session ee159cbc-64e8-44d8-9451-13d91886f1f9 to Drive"
 ```
 → `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="full")`
-Raw text written directly to Drive. Zero VSCode tokens spent on session content.
 
-#### Export and summarize via local LLM through agent-mcp (no VSCode tokens)
+Raw conversation text written directly to Drive. Zero VSCode tokens spent on session content. Claude Code auto-saves sessions continuously, so the current session can be exported at any point.
 
-```
-"Summarize session ee159cbc using the local LLM and save to Drive"
-"Export and summarize these sessions using nuc11Local — save as context-2026-02-25.txt"
-```
-→ `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="agent", model="nuc11Local", filename="context-2026-02-25.txt")`
-agent-mcp's `llm_call()` runs summarization. Only the confirmation returns to VSCode. Zero VSCode tokens spent on session content.
+---
 
-#### Export and summarize with Claude in VSCode (Claude-quality summary, in-context)
+**Push the current session to Drive — summarized by Claude**
 
 ```
-"Summarize this session yourself and save it to Drive"
+"Summarize this session and save it to Drive"
+"Summarize our conversation today and push the summary to Drive"
 ```
 → `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="claude")`
-Full session text is returned to Claude Code. Claude summarizes it in-context, then writes the result to Drive. Consumes VSCode tokens proportional to session size.
+
+Full session text is returned to Claude in-context. Claude writes a summary, then pushes it to Drive. Consumes tokens proportional to session size — but you end up with a compact Drive record instead of a 40k-token raw log.
+
+---
+
+**Push the current session to Drive — summarized by a local LLM (zero VSCode tokens)**
+
+```
+"Summarize this session using the local model and save to Drive"
+"Export and summarize session ee159cbc using nuc11Local — save as context-2026-02-25.txt"
+```
+→ `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="agent", model="nuc11Local", filename="context-2026-02-25.txt")`
+
+agent-mcp's `llm_call()` runs summarization off-context. Only the confirmation returns to VSCode. Zero VSCode tokens spent on session content.
+
+---
+
+**Push multiple sessions to Drive — full logs**
+
+```
+"Export all my agent-mcp sessions from this week to Drive"
+"Save sessions a1b2c3d4, e5f6g7h8, and ee159cbc to Drive as a single file"
+```
+→ `claude_sessions_list(project="agent-mcp")` to find IDs, then:
+→ `gdrive_sessions_export(session_ids=["a1b2c3d4-...", "e5f6g7h8-...", "ee159cbc-..."], mode="full")`
+
+All sessions are assembled into one chronologically ordered Drive file with a header between each.
+
+---
+
+**Push multiple sessions to Drive — summarized**
+
+```
+"Summarize all my agent-mcp sessions from this week and save to Drive"
+"Export and summarize sessions a1b2c3d4 and e5f6g7h8 using gemini25fl"
+```
+→ `gdrive_sessions_export(session_ids=["a1b2c3d4-...", "e5f6g7h8-..."], mode="summary", summarizer="agent", model="gemini25fl")`
+
+Each session is summarized in sequence, assembled into one Drive file. Ideal for end-of-week archiving before the context grows unwieldy.
 
 #### Save a snippet during a session
 
