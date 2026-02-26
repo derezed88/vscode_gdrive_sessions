@@ -781,6 +781,14 @@ These HTTP endpoints are available on the agent-mcp server for any HTTP client:
 - `mode` — `full` (default) or `summary`
 - `model` — agent-mcp model key for summarization (e.g. `nuc11Local`, `gemini25fl`)
 
+### Model Selection for the Summarizer Role
+
+When configuring the agent-mcp model used for autonomous session summarization (Slack/API path), **use `gemini-2.5-flash` or better — not `gemini-2.5-flash-lite`**.
+
+`gemini-2.5-flash-lite` reliably returns `finish_reason=STOP` with empty content after tool results in multi-step agentic chains. It will list sessions but then produce an empty response instead of reading and saving them. This is a fundamental model limitation, not a prompt or configuration issue — the lite model cannot sustain multi-turn tool call sequences of the form: list → read → summarize → write to Drive.
+
+`gemini-2.5-flash` handles this correctly.
+
 ### LLM Summarization
 
 When `mode=summary` is requested (via `/vscode/sessions/read`, `!vscode read`, or `gdrive_sessions_export` with `summarizer=agent`), agent-mcp calls `llm_call()` with:
