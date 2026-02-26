@@ -458,57 +458,68 @@ Session: pre-release steps
 
 ### Claude Code in VSCode Workflows
 
-All five tools are available in any VSCode chat. Claude decides which tool to call based on natural language. The session ID shown by `claude_sessions_list` is the full UUID needed by `gdrive_sessions_export`.
+All tools are available in any VSCode chat. Claude decides which tool to call based on natural language. Use `claude_sessions_list` first to find session IDs.
 
-#### List sessions
+> **Tip: session titles** — The title shown in listings is the **first user message** in that chat. Starting a session with a clear goal ("Implement OAuth2 flow for FastAPI") makes it easy to find later. A generic opener like "hello" produces an unhelpful title.
+
+---
+
+#### Step 1 — Find session IDs
 
 ```
-"Show me my Claude Code sessions from today"
-"List sessions for the agent-mcp project"
+"List my Claude Code sessions from today"
+"Show sessions for the agent-mcp project"
 "Show all my sessions"
 ```
-→ `claude_sessions_list(date="2026-02-24")` — runs locally, no network
+→ `claude_sessions_list(date="2026-02-24", project="agent-mcp")`
 
-#### Read a session into context (no Drive write)
+Returns a list with IDs, timestamps, sizes, and titles. The full UUID from this output is what `gdrive_sessions_export` needs.
+
+---
+
+#### Step 2 — Read, summarize, or export to Drive
+
+Choose based on whether you want content in this chat or saved to Drive, and whether agent-mcp is available.
+
+---
+
+**Read into this chat — no Drive write (without agent-mcp)**
 
 ```
-"What did I work on in the agent-mcp project yesterday?"
-"Summarize today's vscode_gdrive_sessions session using nuc11Localtokens"
+"What did I work on in agent-mcp yesterday?"
 "Read session a1b2c3d4 and tell me what decisions were made"
 ```
-→ `claude_sessions_list(project="agent-mcp", date="2026-02-24")` then `claude_sessions_read(session_ids=["a1b2c3d4"], mode="full")`
+→ `claude_sessions_read(session_ids=["a1b2c3d4"], mode="full")`
 
-Content appears directly in this chat. No Drive write. For `mode="full"`, Claude reads the raw text in-context and summarizes itself (zero extra API calls). For `mode="summary"`, agent-mcp's LLM pre-summarizes (one extra API call, saves VSCode context tokens for very large sessions).
-
----
-
-#### Export sessions to Drive
-
-First, get the session ID(s) you need:
-
-```
-"List my sessions from today"
-```
-→ `claude_sessions_list(date="2026-02-25")` returns IDs like `ee159cbc-64e8-44d8-9451-13d91886f1f9`
-
-> **Tip: session titles** — The session title shown in listings is taken from the **first user message** in the chat. Starting a new chat with a clear goal ("Implement OAuth2 flow for FastAPI") makes it easy to find the right session later. A generic opener like "hello" or "help" will make sessions harder to identify.
+Session text is returned to Claude in this chat. Claude summarizes it in-context. No Drive write. Works with no agent-mcp.
 
 ---
 
-**Push the current session to Drive — full log, no tokens**
+**Read into this chat — pre-summarized by agent-mcp (requires agent-mcp)**
 
 ```
-"Export this session to Drive"
-"Save today's vscode_gdrive_sessions session to Drive as a full log"
-"Push session ee159cbc-64e8-44d8-9451-13d91886f1f9 to Drive"
+"Summarize today's vscode_gdrive_sessions session using the summarizer model"
+"Read session a1b2c3d4 in summary mode"
+```
+→ `claude_sessions_read(session_ids=["a1b2c3d4"], mode="summary", model="summarizer")`
+
+agent-mcp runs the LLM summarization before returning to Claude. Saves VSCode context tokens for very large sessions.
+
+---
+
+**Export to Drive — full log, zero tokens (without agent-mcp)**
+
+```
+"Export session ee159cbc to Drive"
+"Push today's vscode_gdrive_sessions session to Drive as a full log"
 ```
 → `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="full")`
 
-Raw conversation text written directly to Drive. Zero VSCode tokens spent on session content. Claude Code auto-saves sessions continuously, so the current session can be exported at any point.
+Raw conversation written directly to Drive. Zero VSCode tokens spent on session content. The current session can be exported at any point — Claude Code auto-saves continuously.
 
 ---
 
-**Push the current session to Drive — summarized by Claude**
+**Export to Drive — summarized by Claude (without agent-mcp)**
 
 ```
 "Summarize this session and save it to Drive"
@@ -516,46 +527,55 @@ Raw conversation text written directly to Drive. Zero VSCode tokens spent on ses
 ```
 → `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="claude")`
 
-Full session text is returned to Claude in-context. Claude writes a summary, then pushes it to Drive. Consumes tokens proportional to session size — but you end up with a compact Drive record instead of a 40k-token raw log.
+Full session text is returned to Claude in-context. Claude writes a summary, then pushes it to Drive. Costs tokens proportional to session size, but produces a compact Drive record instead of a 40k-token raw log.
 
 ---
 
-**Push the current session to Drive — summarized by a local LLM (zero VSCode tokens)**
+**Export to Drive — summarized by agent-mcp, zero VSCode tokens (requires agent-mcp)**
 
 ```
-"Summarize this session using the local model and save to Drive"
-"Export and summarize session ee159cbc using nuc11Local — save as context-2026-02-25.txt"
+"Export session ee159cbc to Drive, summarized by agent-mcp"
+"Push session ee159cbc to Drive with agent-mcp doing the summarization"
 ```
-→ `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="agent", model="nuc11Local", filename="context-2026-02-25.txt")`
+→ `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="agent")`
 
-agent-mcp's `llm_call()` runs summarization off-context. Only the confirmation returns to VSCode. Zero VSCode tokens spent on session content.
+agent-mcp reads the session, summarizes it with the default model, and writes to Drive entirely off-context. Only the confirmation string returns to Claude. Zero VSCode tokens spent on session content.
+
+To use a specific model or filename:
+```
+"Export session ee159cbc to Drive, summarized by agent-mcp using gemini25fl, save as context-2026-02-25.txt"
+```
+→ `gdrive_sessions_export(session_ids=["ee159cbc-..."], mode="summary", summarizer="agent", model="gemini25fl", filename="context-2026-02-25.txt")`
 
 ---
 
-**Push multiple sessions to Drive — full logs**
+**Export multiple sessions to Drive — full logs (without agent-mcp)**
 
 ```
 "Export all my agent-mcp sessions from this week to Drive"
-"Save sessions a1b2c3d4, e5f6g7h8, and ee159cbc to Drive as a single file"
+"Push sessions a1b2c3d4, e5f6g7h8, and ee159cbc to Drive as a single file"
 ```
-→ `claude_sessions_list(project="agent-mcp")` to find IDs, then:
 → `gdrive_sessions_export(session_ids=["a1b2c3d4-...", "e5f6g7h8-...", "ee159cbc-..."], mode="full")`
 
-All sessions are assembled into one chronologically ordered Drive file with a header between each.
+All sessions assembled into one chronologically ordered Drive file with a header between each.
 
 ---
 
-**Push multiple sessions to Drive — summarized**
+**Export multiple sessions to Drive — summarized by agent-mcp (requires agent-mcp)**
 
 ```
-"Summarize all my agent-mcp sessions from this week and save to Drive"
-"Export and summarize sessions a1b2c3d4 and e5f6g7h8 using gemini25fl"
+"Export all my agent-mcp sessions from this week to Drive, summarized by agent-mcp"
+"Push sessions a1b2c3d4 and e5f6g7h8 to Drive with agent-mcp summarization"
 ```
-→ `gdrive_sessions_export(session_ids=["a1b2c3d4-...", "e5f6g7h8-..."], mode="summary", summarizer="agent", model="gemini25fl")`
+→ `gdrive_sessions_export(session_ids=["a1b2c3d4-...", "e5f6g7h8-..."], mode="summary", summarizer="agent")`
 
-Each session is summarized in sequence, assembled into one Drive file. Ideal for end-of-week archiving before the context grows unwieldy.
+Each session summarized in sequence, assembled into one Drive file. Ideal for end-of-week archiving.
 
-#### Save a snippet during a session
+---
+
+#### Other Drive operations
+
+**Save a snippet during a session**
 
 ```
 "Save this nginx config to Drive under 'nginx'"
@@ -564,7 +584,7 @@ Each session is summarized in sequence, assembled into one Drive file. Ideal for
 → `gdrive_snippet_save(content="...", topic="nginx")`
 → `gdrive_snippet_save(content="...", file_id="1ABCdef...")`
 
-#### Read a Drive file back into context
+**Read a Drive file back into context**
 
 ```
 "Read my nginx notes from Drive"
