@@ -358,12 +358,15 @@ async def list_tools() -> list[Tool]:
             name="gdrive_sessions_export",
             description=(
                 "Export one or more Claude Code chat sessions to a single file in Google Drive. "
+                "Use this whenever the user asks to push, export, save, or archive a session to Drive — "
+                "including when they ask agent-mcp to summarize and save a session. "
                 "Pass session_ids from claude_sessions_list. "
-                "mode='full' preserves all user and assistant turns verbatim. "
+                "mode='full' writes raw conversation verbatim — zero Claude tokens spent on session content. "
                 "mode='summary' generates LLM summaries per session preserving technical details. "
                 "summarizer='claude' — Claude Code in VSCode summarizes in-context (uses VSCode tokens). "
-                "summarizer='agent' — agent-mcp runs the LLM off-context (cheaper, requires agent-mcp). "
-                "model selects which agent-mcp model to use when summarizer='agent' (e.g. 'nuc11Local'). "
+                "summarizer='agent' — agent-mcp reads, summarizes, and writes to Drive entirely off-context "
+                "(zero Claude tokens spent on session content; requires agent-mcp). "
+                "model selects which agent-mcp model to use when summarizer='agent' (e.g. 'summarizer', 'gemini25fl'). "
                 "Sessions are assembled in chronological order with title headers."
             ),
             inputSchema={
