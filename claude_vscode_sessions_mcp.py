@@ -54,6 +54,16 @@ AGENT_MCP_URL   = os.getenv("AGENT_MCP_URL", "http://localhost:8767").rstrip("/"
 AGENT_MCP_TOKEN = os.getenv("AGENT_MCP_TOKEN", "")
 CLAUDE_PROJECTS_DIR = os.path.expanduser("~/.claude/projects")
 
+
+def _utc_ts_to_local_date(ts: str) -> str:
+    """Convert a UTC ISO 8601 timestamp to a local YYYY-MM-DD date string."""
+    try:
+        from datetime import datetime
+        dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
+        return dt.astimezone().strftime("%Y-%m-%d")
+    except Exception:
+        return ts[:10]
+
 app = Server("claude_vscode_sessions_mcp")
 
 
@@ -147,7 +157,7 @@ def _local_sessions_list(date_filter: str = "", project_filter: str = "") -> lis
         except Exception:
             continue
 
-        if date_filter and first_ts and not first_ts.startswith(date_filter):
+        if date_filter and first_ts and not _utc_ts_to_local_date(first_ts).startswith(date_filter):
             continue
         if project_filter and project_filter.lower() not in (cwd or project_dir).lower():
             continue
@@ -180,7 +190,7 @@ def _format_sessions(sessions: list) -> str:
         kb = s.get("file_bytes", 0) / 1024
         size_str = f"{kb:.0f}kB"
         lines.append(
-            f"  [{s['first_timestamp'][:10] if s['first_timestamp'] else '?'}] "
+            f"  [{_utc_ts_to_local_date(s['first_timestamp']) if s['first_timestamp'] else '?'}] "
             f"{s['project_path'].split('/')[-1]:<28} "
             f"ID: {s['session_id']}  "
             f"{size_str:>7}  "
