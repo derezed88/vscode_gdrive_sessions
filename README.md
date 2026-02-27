@@ -216,7 +216,9 @@ The script uses Python to safely merge the following entry into `~/.claude.json`
 }
 ```
 
-This is the only change made to your VSCode/Claude Code configuration. No VSCode workspace settings, launch configurations, or extension settings are modified.
+**This entry is what makes the MCP start automatically.** `~/.claude.json` is a global config file read by Claude Code on every VSCode window open. Once this entry exists, Claude Code will launch `claude_vscode_sessions_mcp.py` as a child process every time any VSCode window opens — no further configuration required. The absolute path to the script is written by the setup script based on where you cloned the repo, so it works regardless of your current working directory when you open VSCode.
+
+This is the only change made to your system configuration. No VSCode workspace settings, launch configurations, or extension settings are modified.
 
 ### 3. Edit `.env`
 
@@ -244,19 +246,43 @@ After restarting, Claude Code automatically launches the MCP server as a child p
 
 ## How the Server Starts
 
-Claude Code reads `~/.claude.json` on startup. When it finds the `"claude-sessions"` entry under `"mcpServers"`, it launches:
+**You do not run these scripts yourself.** `claude_vscode_sessions_mcp.py` and `drive.py` are not meant to be launched from the terminal. Claude Code manages the entire lifecycle automatically.
 
-```bash
-python3 /path/to/vscode_gdrive_sessions/claude_vscode_sessions_mcp.py
+### One process per VSCode window
+
+Each VSCode window with the Claude Code extension running spawns its own dedicated MCP server process. If you have three VSCode windows open, three independent `claude_vscode_sessions_mcp.py` processes are running — one per window. Each process is isolated: it loads its own `.env`, maintains its own connection state, and communicates only with the Claude Code instance that launched it.
+
+When you close a VSCode window, its MCP server process exits. If the server crashes, Claude Code restarts it automatically.
+
+### How automatic launch works
+
+The setup script writes a single entry to `~/.claude.json` under the `"mcpServers"` key:
+
+```json
+"mcpServers": {
+  "claude-sessions": {
+    "type": "stdio",
+    "command": "python3",
+    "args": ["/path/to/vscode_gdrive_sessions/claude_vscode_sessions_mcp.py"]
+  }
+}
 ```
 
-The server runs as a **stdio MCP server** — it communicates with Claude Code via stdin/stdout using the MCP protocol. It is not an HTTP server; it has no port. It runs for as long as VSCode is open and is restarted automatically if it crashes.
+`~/.claude.json` is a global config file shared across all VSCode windows. Every time a VSCode window opens, Claude Code reads this file and launches the listed MCP servers as child processes — one per server entry, per window. There is nothing to start, enable, or configure per-project.
 
-On startup the server:
-1. Loads `.env` from its own directory
-2. Reads `AGENT_MCP_URL`, `AGENT_MCP_TOKEN` from environment
+The server communicates with Claude Code via **stdin/stdout using the MCP protocol**. It is not an HTTP server and has no port. All tool calls from Claude Code arrive as JSON on stdin; responses go back on stdout. The process is invisible — it does not open a terminal window or log anything to the VSCode UI under normal operation.
+
+### What happens on startup
+
+When Claude Code spawns the process:
+1. The server loads `.env` from its own directory
+2. Reads `AGENT_MCP_URL` and `AGENT_MCP_TOKEN` from environment
 3. Imports `drive.py` lazily — only when agent-mcp is unreachable (so missing Google libs won't prevent startup)
 4. Registers six tools and waits for Claude Code to call them
+
+### Picking up changes
+
+Because the server process is started fresh with each VSCode window, changes to `claude_vscode_sessions_mcp.py` or `.env` only take effect after restarting VSCode. There is no hot-reload — a full restart of the VSCode window is required.
 
 ---
 

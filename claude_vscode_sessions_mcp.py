@@ -157,7 +157,7 @@ def _local_sessions_list(date_filter: str = "", project_filter: str = "") -> lis
         except Exception:
             continue
 
-        if date_filter and first_ts and not _utc_ts_to_local_date(first_ts).startswith(date_filter):
+        if date_filter and not _utc_ts_to_local_date(last_ts or first_ts or "").startswith(date_filter):
             continue
         if project_filter and project_filter.lower() not in (cwd or project_dir).lower():
             continue
@@ -177,7 +177,7 @@ def _local_sessions_list(date_filter: str = "", project_filter: str = "") -> lis
             "file_bytes": file_bytes,
         })
 
-    sessions.sort(key=lambda s: s["first_timestamp"])
+    sessions.sort(key=lambda s: s["last_timestamp"] or s["first_timestamp"])
     # Filter out orphaned snapshot-only files (no actual chat messages)
     return [s for s in sessions if s["message_count"] > 0]
 
@@ -190,7 +190,7 @@ def _format_sessions(sessions: list) -> str:
         kb = s.get("file_bytes", 0) / 1024
         size_str = f"{kb:.0f}kB"
         lines.append(
-            f"  [{_utc_ts_to_local_date(s['first_timestamp']) if s['first_timestamp'] else '?'}] "
+            f"  [{_utc_ts_to_local_date(s['last_timestamp'] or s['first_timestamp']) if (s['last_timestamp'] or s['first_timestamp']) else '?'}] "
             f"{s['project_path'].split('/')[-1]:<28} "
             f"ID: {s['session_id']}  "
             f"{size_str:>7}  "
@@ -376,7 +376,9 @@ async def list_tools() -> list[Tool]:
                 "summarizer='claude' — Claude Code in VSCode summarizes in-context (uses VSCode tokens). "
                 "summarizer='agent' — agent-mcp reads, summarizes, and writes to Drive entirely off-context "
                 "(zero Claude tokens spent on session content; requires agent-mcp). "
-                "model selects which agent-mcp model to use when summarizer='agent' (e.g. 'summarizer', 'gemini25fl'). "
+                "model selects which agent-mcp model to use when summarizer='agent' — "
+                "pass the model key name from your agent-mcp llm-models.json. "
+                "Do NOT write Python code or call agent-mcp APIs directly; use this tool instead. "
                 "Sessions are assembled in chronological order with title headers."
             ),
             inputSchema={
@@ -409,7 +411,8 @@ async def list_tools() -> list[Tool]:
                         "type": "string",
                         "description": (
                             "agent-mcp model key for summarization when summarizer='agent'. "
-                            "E.g. 'nuc11Local', 'gemini25fl'. Leave empty for agent-mcp default."
+                            "Use the key name from your agent-mcp llm-models.json. "
+                            "Leave empty for agent-mcp default."
                         )
                     },
                     "folder_id": {
