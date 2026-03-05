@@ -9,9 +9,16 @@ MCP_DIR="$SCRIPT_DIR"
 echo "=== Claude setup for vscode-gdrive-sessions-mcp setup ==="
 echo ""
 
-# 1. Install Python dependencies
+# 1. Create venv (using python3.11 if available, else python3) and install dependencies
 echo "[1/3] Installing Python dependencies..."
-pip install -r "$MCP_DIR/requirements.txt" --quiet
+VENV_DIR="$MCP_DIR/venv"
+if [ ! -d "$VENV_DIR" ]; then
+    PYTHON_BIN=$(command -v python3.11 || command -v python3)
+    "$PYTHON_BIN" -m venv "$VENV_DIR"
+    echo "      Created venv at $VENV_DIR using $PYTHON_BIN"
+fi
+"$VENV_DIR/bin/pip" install -r "$MCP_DIR/requirements.txt" --quiet
+PYTHON_CMD="$VENV_DIR/bin/python3"
 echo "      Done."
 
 # 2. Create .env from example if missing
@@ -29,7 +36,7 @@ SERVER_NAME="claude-sessions"
 SERVER_ENTRY=$(cat <<EOF
 {
   "type": "stdio",
-  "command": "python3",
+  "command": "$PYTHON_CMD",
   "args": ["$MCP_DIR/claude_vscode_sessions_mcp.py"]
 }
 EOF
@@ -42,19 +49,20 @@ if [ ! -f "$CLAUDE_JSON" ]; then
 fi
 
 # Use python3 to safely merge into existing JSON
-python3 - "$CLAUDE_JSON" "$SERVER_NAME" "$MCP_DIR/claude_vscode_sessions_mcp.py" <<'PYEOF'
+"$PYTHON_CMD" - "$CLAUDE_JSON" "$SERVER_NAME" "$MCP_DIR/claude_vscode_sessions_mcp.py" "$PYTHON_CMD" <<'PYEOF'
 import sys, json
 
 claude_json_path = sys.argv[1]
 server_name      = sys.argv[2]
 server_script    = sys.argv[3]
+python_cmd       = sys.argv[4]
 
 with open(claude_json_path) as f:
     data = json.load(f)
 
 data.setdefault("mcpServers", {})[server_name] = {
     "type": "stdio",
-    "command": "python3",
+    "command": python_cmd,
     "args": [server_script]
 }
 

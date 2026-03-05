@@ -192,10 +192,16 @@ bash claude-vscode-setup.sh
 
 This script does three things:
 
-**Step 1 — Install Python dependencies:**
+**Step 1 — Create a venv and install Python dependencies:**
+
+The script creates a dedicated `venv/` inside the project directory (using `python3.11` if available, otherwise `python3`), then installs all dependencies into it:
+
 ```bash
-pip install -r requirements.txt --quiet
+python3.11 -m venv venv
+venv/bin/pip install -r requirements.txt --quiet
 ```
+
+This ensures the Google API libraries and all other dependencies land in a known, isolated environment — not in a system or user Python that may or may not have them.
 
 **Step 2 — Create `.env` from template** (if `.env` doesn't already exist):
 ```bash
@@ -210,13 +216,15 @@ The script uses Python to safely merge the following entry into `~/.claude.json`
 "mcpServers": {
   "claude-sessions": {
     "type": "stdio",
-    "command": "python3",
+    "command": "/path/to/vscode_gdrive_sessions/venv/bin/python3",
     "args": ["/path/to/vscode_gdrive_sessions/claude_vscode_sessions_mcp.py"]
   }
 }
 ```
 
-**This entry is what makes the MCP start automatically.** `~/.claude.json` is a global config file read by Claude Code on every VSCode window open. Once this entry exists, Claude Code will launch `claude_vscode_sessions_mcp.py` as a child process every time any VSCode window opens — no further configuration required. The absolute path to the script is written by the setup script based on where you cloned the repo, so it works regardless of your current working directory when you open VSCode.
+Note that `command` points to the **venv's Python binary**, not the system `python3`. This is critical: the MCP server must run with the same Python that has its dependencies installed. If `command` were `"python3"`, it would resolve to whatever Python is on `$PATH` in Claude Code's environment — which may not have `google-api-python-client` installed, causing `No module named 'google'` errors in any VSCode project on the machine.
+
+**This entry is what makes the MCP start automatically.** `~/.claude.json` is a global config file read by Claude Code on every VSCode window open. Once this entry exists, Claude Code will launch `claude_vscode_sessions_mcp.py` as a child process every time any VSCode window opens — no further configuration required. The absolute paths are written by the setup script based on where you cloned the repo.
 
 This is the only change made to your system configuration. No VSCode workspace settings, launch configurations, or extension settings are modified.
 
@@ -262,11 +270,13 @@ The setup script writes a single entry to `~/.claude.json` under the `"mcpServer
 "mcpServers": {
   "claude-sessions": {
     "type": "stdio",
-    "command": "python3",
+    "command": "/path/to/vscode_gdrive_sessions/venv/bin/python3",
     "args": ["/path/to/vscode_gdrive_sessions/claude_vscode_sessions_mcp.py"]
   }
 }
 ```
+
+`command` points to the **project venv's Python**, not the system `python3`. This guarantees the MCP server always runs with the Python that has `google-api-python-client` and other dependencies installed — regardless of what `python3` resolves to in any given VSCode project's environment.
 
 `~/.claude.json` is a global config file shared across all VSCode windows. Every time a VSCode window opens, Claude Code reads this file and launches the listed MCP servers as child processes — one per server entry, per window. There is nothing to start, enable, or configure per-project.
 
